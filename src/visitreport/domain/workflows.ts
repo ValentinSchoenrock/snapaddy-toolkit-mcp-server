@@ -46,31 +46,31 @@ export function extractJobErrors(jobId: string, logsResponse: unknown): Workflow
 
 export function workflowsForEvent(workflows: Workflow[], eventId: string) {
   return workflows
-    .filter((w) => w.eventIds.includes(eventId))
-    .map((w) => ({
-      id: w.id,
-      name: w.name,
-      status: w.status,
-      triggers: w.triggers.map((t) => t.type),
+    .filter((workflow) => workflow.eventIds.includes(eventId))
+    .map((workflow) => ({
+      id: workflow.id,
+      name: workflow.name,
+      status: workflow.status,
+      triggers: workflow.triggers.map((t) => t.type),
     }));
 }
 
 /** Status counts are computed only over the scanned events assigned to each workflow. */
 export function summarizeWorkflows(workflows: Workflow[], scanned: VrEvent[]) {
   const byId = new Map(scanned.map((e) => [e.id, e]));
-  return workflows.map((w) => {
-    const assigned = w.eventIds.map((id) => byId.get(id)).filter((e): e is VrEvent => !!e);
+  return workflows.map((workflow) => {
+    const assigned = workflow.eventIds.map((id) => byId.get(id)).filter((e): e is VrEvent => !!e);
     const statusCountsOverScannedEvents: Record<string, number> = {};
     for (const e of assigned) {
       const s = normalizeStatus(e.status);
       statusCountsOverScannedEvents[s] = (statusCountsOverScannedEvents[s] ?? 0) + 1;
     }
     return {
-      id: w.id,
-      name: w.name,
-      status: w.status,
-      triggerTypes: [...new Set(w.triggers.map((t) => t.type))],
-      assignedEventIds: w.eventIds,
+      id: workflow.id,
+      name: workflow.name,
+      status: workflow.status,
+      triggerTypes: [...new Set(workflow.triggers.map((t) => t.type))],
+      assignedEventIds: workflow.eventIds,
       assignedScannedEvents: assigned.map((e) => ({ id: e.id, title: e.title, status: e.status })),
       statusCountsOverScannedEvents,
     };

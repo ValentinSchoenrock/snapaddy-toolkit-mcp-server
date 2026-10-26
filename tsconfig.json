@@ -6,17 +6,11 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmitOnError": true,
     "outDir": "build",
     "rootDir": "src",
-    "noImplicitAny": false,
-    "esModuleInterop": true,
+    "esModuleInterop": true
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "node_modules",
-    "build",
-    ".vscode-test"
-  ]
+  "include": ["src"]
 }

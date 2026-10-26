@@ -27,7 +27,10 @@ export interface Report {
   createdAt?: string;
   [key: string]: unknown;
 }
-export interface WorkflowTrigger { type: string;[key: string]: unknown }
+export interface WorkflowTrigger {
+  type: string;
+  [key: string]: unknown
+}
 export interface Workflow {
   id: string;
   name: string;

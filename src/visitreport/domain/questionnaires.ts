@@ -3,13 +3,13 @@ import type { Question, VrEvent } from "../types.js";
 const norm = (s: unknown) => String(s ?? "").toLowerCase();
 const has = (s: unknown, q: string) => norm(s).includes(q);
 
-export function questionMatches(q: Question, query: string): string[] {
+export function questionMatches(question: Question, query: string): string[] {
   const hits: string[] = [];
-  if (has(q.id, query) || has(q.mappingId, query) || has(q.title, query)) hits.push(`question:${q.id}`);
-  for (const o of q.options ?? []) {
-    if (has(o.id, query) || has(o.mappingId, query) || has(o.label, query)) hits.push(`option:${q.id}/${o.id}`);
+  if (has(question.id, query) || has(question.mappingId, query) || has(question.title, query)) hits.push(`question:${question.id}`);
+  for (const o of question.options ?? []) {
+    if (has(o.id, query) || has(o.mappingId, query) || has(o.label, query)) hits.push(`option:${question.id}/${o.id}`);
   }
-  for (const child of q.questions ?? []) hits.push(...questionMatches(child, query));
+  for (const child of question.questions ?? []) hits.push(...questionMatches(child, query));
   return hits;
 }
 
