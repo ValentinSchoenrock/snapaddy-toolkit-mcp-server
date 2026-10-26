@@ -1,17 +1,3 @@
-import type {
-  IGetQuestionnaireWorkflowResponseDto,
-  IGetWorkflowV2ResponseDto,
-  IPostReportsGridResponseDto,
-  IQuestionnaireListResponseDto,
-  IQuestionnaireResponseDto,
-} from "@snapaddy/backend-client-angular";
-
-export type Questionnaire = IQuestionnaireResponseDto;
-export type QuestionnaireListItem = IQuestionnaireListResponseDto;
-export type ReportsGrid = IPostReportsGridResponseDto;
-export type WorkflowDto = IGetWorkflowV2ResponseDto;
-export type QuestionnaireWorkflow = IGetQuestionnaireWorkflowResponseDto;
-
 export interface Option { id: string; label: string; mappingId?: string; value?: string }
 export interface Question {
   id: string;

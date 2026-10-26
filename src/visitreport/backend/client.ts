@@ -186,8 +186,8 @@ export class HttpBackend implements Backend {
       headers: { "x-api-key": this.config.token, Accept: "application/json", "Content-Type": "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-          if (res.status === 401 || res.status === 403) throw new AuthError(path, res.status);
-          if (!res.ok) throw new Error(`Backend request ${path} failed with status ${res.status}`);
+    if (res.status === 401 || res.status === 403) throw new AuthError(path, res.status);
+    if (!res.ok) throw new Error(`Backend request ${path} failed with status ${res.status}`);
     return (await res.json()) as T;
   }
 }

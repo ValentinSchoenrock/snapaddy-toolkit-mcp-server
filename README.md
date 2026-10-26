@@ -89,7 +89,11 @@ Add this server to your Claude Desktop configuration file:
 ```
 mcp-server/
 ├── src/
-│   └── index.ts          # Main server implementation
+│   ├── api-key-store.ts  # Persistent API-key storage
+│   ├── cli.ts            # Command-line command handling
+│   ├── index.ts          # Executable entrypoint
+│   ├── server.ts         # MCP server composition and startup
+│   └── visitreport/      # Backend, domain logic, and tool registration
 ├── build/                # Compiled JavaScript output
 ├── package.json          # Project dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
@@ -100,15 +104,15 @@ mcp-server/
 
 ### Adding New Tools
 
-Edit [src/index.ts](src/index.ts) and add your tool definition to the `ListToolsRequestSchema` handler and implement its logic in the `CallToolRequestSchema` handler.
+Add the tool implementation under `src/visitreport/tools/` and register it from `register-tools.ts`. Keep server startup and command-line handling in `src/server.ts` and `src/cli.ts`.
 
 ### Adding New Resources
 
-Add resource definitions to the `ListResourcesRequestSchema` handler and implement the read logic in the `ReadResourceRequestSchema` handler.
+Add resource definitions alongside the relevant domain or tool module, then register them from `register-tools.ts`.
 
 ### Adding New Prompts
 
-Define prompts in the `ListPromptsRequestSchema` handler and implement their generation in the `GetPromptRequestSchema` handler.
+Define prompts alongside the feature that consumes them and keep the executable entrypoint in `src/index.ts` unchanged.
 
 ## License
 

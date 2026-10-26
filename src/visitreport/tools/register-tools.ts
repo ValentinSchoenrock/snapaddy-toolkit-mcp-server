@@ -2,20 +2,21 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { storeApiKey } from "../../api-key-store.js";
 import { AuthError, type Backend, type WorkflowJobSearch } from "../backend/client.js";
-import { diffEvents } from "../domain/diff.js";
-import { eventMatches, questionsForEvent } from "../domain/questionnaires.js";
-import { collectReportMatches } from "../domain/reports.js";
 import {
   EVENT_CONCURRENCY, MAX_EVENTS, MAX_MATCHES, MAX_REPORTS_PER_EVENT,
-  capMatches, mapLimited,
-} from "../domain/shared.js";
-import { extractJobErrors, extractJobIds, summarizeWorkflows, workflowsForEvent } from "../domain/workflows.js";
+  capMatches, collectReportMatches,
+  diffEvents,
+  eventMatches,
+  extractJobErrors, extractJobIds,
+  mapLimited, questionsForEvent,
+  summarizeWorkflows, workflowsForEvent
+} from "../domain/index.js";
 
 const text = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data) }] });
 const TOOL_TIMEOUT_MS = 60_000;
 
 async function withTimeout<T>(promise: Promise<T>): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Tool call timed out after ${TOOL_TIMEOUT_MS / 1000}s`)), TOOL_TIMEOUT_MS);
   });
@@ -116,79 +117,78 @@ export function registerTools(server: McpServer, backend: Backend) {
     }),
   );
 
-  if (process.env.VISITREPORT_ENABLE_WRITE_TOOLS === "true") {
-    server.registerTool(
-      "set_option_value",
-      {
-        description: "Change one option value in a draft VisitReport questionnaire. Shows the exact change and requires manual confirmation via MCP elicitation before writing.",
-        inputSchema: { eventId: idSchema, questionId: idSchema, optionId: idSchema, value: z.string().max(1000) },
-        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+  server.registerTool(
+    "set_option_value",
+    {
+      description: "Change one option value in a draft VisitReport questionnaire. Shows the exact change and requires manual confirmation via MCP elicitation before writing.",
+      inputSchema: { eventId: idSchema, questionId: idSchema, optionId: idSchema, value: z.string().max(1000) },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    guard("set_option_value", async ({ eventId, questionId, optionId, value }: { eventId: string; questionId: string; optionId: string; value: string }) => {
+      const event = await backend.getEvent(eventId);
+      const question = questionsForEvent(event).find((item) => item.id === questionId);
+      const option = question?.options?.find((item) => item.id === optionId);
+      if (!option) throw new Error(`Option ${optionId} not found in question ${questionId} of event ${eventId}`);
+      if (option.value === value) return { changed: false, reason: "Value already matches" };
+      const confirmation = await server.server.elicitInput({
+        message: `Option Value ändern? Event: ${event.title} (${eventId}); Frage: ${question?.title} (${questionId}); Option: ${option.label} (${optionId}); bisher: ${JSON.stringify(option.value ?? null)}; neu: ${JSON.stringify(value)}. Nur mit Ja wird diese Änderung ausgeführt.`,
+        requestedSchema: { type: "object", properties: { confirm: { type: "string", title: "Änderung bestätigen", enum: ["Ja", "Nein"] } }, required: ["confirm"] },
+      });
+      if (confirmation.action !== "accept" || confirmation.content?.confirm !== "Ja") return { changed: false, reason: "Not confirmed" };
+      await backend.updateOptionValue(eventId, questionId, optionId, option.value, value);
+      return { changed: true, eventId, questionId, optionId, oldValue: option.value ?? null, newValue: value };
+    }),
+  );
+
+  server.registerTool(
+    "set_option_values",
+    {
+      description: "Change multiple option values in a draft VisitReport questionnaire. Shows all changes and requires one manual confirmation via MCP elicitation before writing.",
+      inputSchema: {
+        eventId: idSchema,
+        changes: z.array(z.object({
+          questionId: idSchema,
+          optionId: idSchema,
+          value: z.string().max(1000),
+        })).min(2).max(100),
       },
-      guard("set_option_value", async ({ eventId, questionId, optionId, value }: { eventId: string; questionId: string; optionId: string; value: string }) => {
-        const event = await backend.getEvent(eventId);
-        const question = questionsForEvent(event).find((item) => item.id === questionId);
-        const option = question?.options?.find((item) => item.id === optionId);
-        if (!option) throw new Error(`Option ${optionId} not found in question ${questionId} of event ${eventId}`);
-        if (option.value === value) return { changed: false, reason: "Value already matches" };
-        const confirmation = await server.server.elicitInput({
-          message: `Option Value ändern? Event: ${event.title} (${eventId}); Frage: ${question?.title} (${questionId}); Option: ${option.label} (${optionId}); bisher: ${JSON.stringify(option.value ?? null)}; neu: ${JSON.stringify(value)}. Nur mit Ja wird diese Änderung ausgeführt.`,
-          requestedSchema: { type: "object", properties: { confirm: { type: "string", title: "Änderung bestätigen", enum: ["Ja", "Nein"] } }, required: ["confirm"] },
-        });
-        if (confirmation.action !== "accept" || confirmation.content?.confirm !== "Ja") return { changed: false, reason: "Not confirmed" };
-        await backend.updateOptionValue(eventId, questionId, optionId, option.value, value);
-        return { changed: true, eventId, questionId, optionId, oldValue: option.value ?? null, newValue: value };
-      }),
-    );
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    guard("set_option_values", async ({ eventId, changes }: {
+      eventId: string;
+      changes: { questionId: string; optionId: string; value: string }[];
+    }) => {
+      const event = await backend.getEvent(eventId);
+      const questions = questionsForEvent(event);
+      const pending = changes.map((change) => {
+        const question = questions.find((item) => item.id === change.questionId);
+        const option = question?.options?.find((item) => item.id === change.optionId);
+        if (!question || !option) throw new Error(`Option ${change.optionId} not found in question ${change.questionId} of event ${eventId}`);
+        return { ...change, questionTitle: question.title, optionLabel: option.label, oldValue: option.value };
+      }).filter((change) => change.oldValue !== change.value);
 
-    server.registerTool(
-      "set_option_values",
-      {
-        description: "Change multiple option values in a draft VisitReport questionnaire. Shows all changes and requires one manual confirmation via MCP elicitation before writing.",
-        inputSchema: {
-          eventId: idSchema,
-          changes: z.array(z.object({
-            questionId: idSchema,
-            optionId: idSchema,
-            value: z.string().max(1000),
-          })).min(2).max(100),
-        },
-        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-      },
-      guard("set_option_values", async ({ eventId, changes }: {
-        eventId: string;
-        changes: { questionId: string; optionId: string; value: string }[];
-      }) => {
-        const event = await backend.getEvent(eventId);
-        const questions = questionsForEvent(event);
-        const pending = changes.map((change) => {
-          const question = questions.find((item) => item.id === change.questionId);
-          const option = question?.options?.find((item) => item.id === change.optionId);
-          if (!question || !option) throw new Error(`Option ${change.optionId} not found in question ${change.questionId} of event ${eventId}`);
-          return { ...change, questionTitle: question.title, optionLabel: option.label, oldValue: option.value };
-        }).filter((change) => change.oldValue !== change.value);
+      if (!pending.length) return { changed: false, reason: "All values already match" };
 
-        if (!pending.length) return { changed: false, reason: "All values already match" };
+      const preview = pending.map((change, index) =>
+        `${index + 1}. Frage: ${change.questionTitle} (${change.questionId}); Option: ${change.optionLabel} (${change.optionId}); bisher: ${JSON.stringify(change.oldValue ?? null)}; neu: ${JSON.stringify(change.value)}`,
+      ).join("\n");
+      const confirmation = await server.server.elicitInput({
+        message: `Option Values ändern? Event: ${event.title} (${eventId})\n${preview}\nNur mit Ja werden alle Änderungen ausgeführt.`,
+        requestedSchema: { type: "object", properties: { confirm: { type: "string", title: "Änderungen bestätigen", enum: ["Ja", "Nein"] } }, required: ["confirm"] },
+      });
+      if (confirmation.action !== "accept" || confirmation.content?.confirm !== "Ja") return { changed: false, reason: "Not confirmed" };
 
-        const preview = pending.map((change, index) =>
-          `${index + 1}. Frage: ${change.questionTitle} (${change.questionId}); Option: ${change.optionLabel} (${change.optionId}); bisher: ${JSON.stringify(change.oldValue ?? null)}; neu: ${JSON.stringify(change.value)}`,
-        ).join("\n");
-        const confirmation = await server.server.elicitInput({
-          message: `Option Values ändern? Event: ${event.title} (${eventId})\n${preview}\nNur mit Ja werden alle Änderungen ausgeführt.`,
-          requestedSchema: { type: "object", properties: { confirm: { type: "string", title: "Änderungen bestätigen", enum: ["Ja", "Nein"] } }, required: ["confirm"] },
-        });
-        if (confirmation.action !== "accept" || confirmation.content?.confirm !== "Ja") return { changed: false, reason: "Not confirmed" };
+      for (const change of pending) {
+        await backend.updateOptionValue(eventId, change.questionId, change.optionId, change.oldValue, change.value);
+      }
+      return {
+        changed: true,
+        eventId,
+        changes: pending.map(({ questionId, optionId, oldValue, value }) => ({ questionId, optionId, oldValue: oldValue ?? null, newValue: value })),
+      };
+    }),
+  );
 
-        for (const change of pending) {
-          await backend.updateOptionValue(eventId, change.questionId, change.optionId, change.oldValue, change.value);
-        }
-        return {
-          changed: true,
-          eventId,
-          changes: pending.map(({ questionId, optionId, oldValue, value }) => ({ questionId, optionId, oldValue: oldValue ?? null, newValue: value })),
-        };
-      }),
-    );
-  }
 
   server.registerTool(
     "event_diff",
