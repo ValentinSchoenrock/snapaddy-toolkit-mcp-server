@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Backend, WorkflowJobSearch } from "../backend/client.js";
+import { storeApiKey } from "../../api-key-store.js";
+import { AuthError, type Backend, type WorkflowJobSearch } from "../backend/client.js";
 import { diffEvents } from "../domain/diff.js";
 import { eventMatches, questionsForEvent } from "../domain/questionnaires.js";
 import { collectReportMatches } from "../domain/reports.js";
@@ -39,10 +40,42 @@ async function scanEvents(backend: Backend, limit: number, includeArchived: bool
   return events.slice(0, Math.min(limit, MAX_EVENTS));
 }
 
+let authContext: { server: McpServer; backend: Backend } | undefined;
+
+// Asks the user for a new API key via elicitation, stores it and applies it to the running backend
+async function promptForApiKey(): Promise<boolean> {
+  if (!authContext) return false;
+  const { server, backend } = authContext;
+  try {
+    const result = await server.server.elicitInput({
+      message: "The snapAddy API key is missing or invalid (403). Please enter a valid API key; it will be stored for future use.",
+      requestedSchema: {
+        type: "object",
+        properties: { apiKey: { type: "string", title: "snapAddy API key", minLength: 1 } },
+        required: ["apiKey"],
+      },
+    });
+    const key = typeof result.content?.apiKey === "string" ? result.content.apiKey.trim() : "";
+    if (result.action !== "accept" || !key) return false;
+    storeApiKey(key);
+    process.env.SNAPADDY_API_KEY = key;
+    backend.setToken?.(key);
+    return true;
+  } catch (e) {
+    console.error("API key prompt failed:", e instanceof Error ? e.message : "Unknown error");
+    return false;
+  }
+}
+
 function guard<A>(toolName: string, fn: (a: A) => Promise<unknown>) {
   return async (args: A) => {
     try {
-      return text(await withTimeout(fn(args)));
+      try {
+        return text(await withTimeout(fn(args)));
+      } catch (e) {
+        if (!(e instanceof AuthError) || !(await promptForApiKey())) throw e;
+        return text(await withTimeout(fn(args)));
+      }
     } catch (e) {
       console.error(`[${toolName}]`, e instanceof Error ? e.message : "Unknown error");
       return errorResult(e);
@@ -51,6 +84,7 @@ function guard<A>(toolName: string, fn: (a: A) => Promise<unknown>) {
 }
 
 export function registerTools(server: McpServer, backend: Backend) {
+  authContext = { server, backend };
   server.registerTool(
     "get_event_questions",
     {

@@ -11,6 +11,14 @@ export interface Backend {
   getQuestionnaireWorkflows(eventId: string): Promise<Workflow[]>;
   searchWorkflowJobs(query: WorkflowJobSearch): Promise<unknown>;
   getWorkflowJobLogs(jobId: string): Promise<unknown>;
+  setToken?(token: string): void;
+}
+
+export class AuthError extends Error {
+  constructor(path: string, status: number) {
+    super(`Backend request ${path} failed with status ${status}: API key missing or invalid`);
+    this.name = "AuthError";
+  }
 }
 
 export type WorkflowJobFilter = { operator: "IS" | "IS_NOT"; value: string };
@@ -52,6 +60,10 @@ export class HttpBackend implements Backend {
     private readonly fetchFn: FetchLike = fetch as unknown as FetchLike,
   ) { }
 
+  setToken(token: string) {
+    this.config.token = token;
+  }
+
   private async get<T>(path: string, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
     const url = new URL(path, this.config.baseUrl);
     for (const [k, v] of Object.entries(params)) {
@@ -62,6 +74,7 @@ export class HttpBackend implements Backend {
       headers: { "x-api-key": this.config.token, Accept: "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
+    if (res.status === 401 || res.status === 403) throw new AuthError(path, res.status);
     if (!res.ok) throw new Error(`Backend request ${path} failed with status ${res.status}`);
     return (await res.json()) as T;
   }
@@ -173,7 +186,8 @@ export class HttpBackend implements Backend {
       headers: { "x-api-key": this.config.token, Accept: "application/json", "Content-Type": "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!res.ok) throw new Error(`Backend request ${path} failed with status ${res.status}`);
+          if (res.status === 401 || res.status === 403) throw new AuthError(path, res.status);
+          if (!res.ok) throw new Error(`Backend request ${path} failed with status ${res.status}`);
     return (await res.json()) as T;
   }
 }

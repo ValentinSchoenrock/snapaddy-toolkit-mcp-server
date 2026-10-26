@@ -51,10 +51,21 @@ Add this server to your Claude Desktop configuration file:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "snapaddy-api-key",
+      "description": "SnapADDY API key",
+      "password": true
+    }
+  ],
   "mcpServers": {
     "mcp-server": {
       "command": "node",
-      "args": ["C:\\git\\mcp-server\\build\\index.js"]
+      "args": ["C:\\git\\mcp-server\\build\\index.js"],
+      "env": {
+        "SNAPADDY_API_KEY": "${input:snapaddy-api-key}"
+      }
     }
   }
 }
@@ -71,7 +82,7 @@ Add this server to your Claude Desktop configuration file:
 
 ## Environment Variables
 
-- `SNAPADDY_API_KEY`: Your SnapADDY API key (optional, hardcoded fallback available for testing)
+- `SNAPADDY_API_KEY`: Your SnapADDY API key (required for API requests). Provide it through the process environment; do not commit it to source control. If unset, the key stored via `node build/index.js set-api-key` (in `~/.snapaddy-mcp/api-key.json`) is used.
 
 ## Project Structure
 

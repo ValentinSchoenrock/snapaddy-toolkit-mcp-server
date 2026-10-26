@@ -23,7 +23,11 @@ export class SnapADDYAPIService {
 
 
   protected getApiToken(env: Environment): string {
-    return 'AhDq3867MTund2NuHGrHdsM7nHmo31qvcYN37Nug';
+    const token = process.env.SNAPADDY_API_KEY?.trim();
+    if (!token) {
+      throw new InvalidSettingsError('SNAPADDY_API_KEY is required');
+    }
+    return token;
   }
 
 
