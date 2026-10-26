@@ -60,7 +60,7 @@ Add this server to your Claude Desktop configuration file:
     }
   ],
   "mcpServers": {
-    "mcp-server": {
+    "STK": {
       "command": "node",
       "args": ["C:\\git\\mcp-server\\build\\index.js"],
       "env": {
