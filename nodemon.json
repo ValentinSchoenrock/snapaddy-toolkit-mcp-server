@@ -1,0 +1,11 @@
+{
+  "watch": [
+    "build"
+  ],
+  "ext": "js",
+  "ignore": [
+    "*.test.js"
+  ],
+  "exec": "node --inspect build/index.js",
+  "delay": "1000"
+}
