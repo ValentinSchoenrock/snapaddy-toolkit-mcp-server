@@ -16,6 +16,12 @@
   "bin": {
     "mcp-server": "./build/index.js"
   },
+  "files": [
+    "build"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node --inspect build/index.js",
     "dev": "npm-run-all -p watch dev:server",
